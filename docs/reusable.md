@@ -11,7 +11,7 @@ Pieces worth reusing when adding features. Reuse these before writing new code.
 | `crc32()` | codec.dart | zlib-compatible CRC (also OTA) |
 | `u16le / u32le / readU16le` | codec.dart | byte packing |
 | `Reply` (cmd / status / isAck) | codec.dart | parsing any notification |
-| `IPixelDevice.request()` / `fire()` / `upload()` | device.dart | new commands: `request` waits for the reply with the same cmd id; `upload` is the per-frame ack loop with progress |
+| `IPixelDevice.request()` / `requestOptional()` / `fire()` / `upload()` | device.dart | new commands: `request` waits for the reply with the same cmd id; `upload` is the per-frame ack loop with progress |
 | `IPixelDevice.inDiy` + `_leaveDiy()` | device.dart | any new upload type must leave DIY mode first (or the panel keeps showing the live frame) |
 | `BleLink` interface | ble_link.dart | porting to a new BLE stack: implement 4 members |
 | `PanelInfo.fromHandshake` + `ledTypeSizes` | panel.dart | anything that needs the panel resolution |
@@ -19,11 +19,25 @@ Pieces worth reusing when adding features. Reuse these before writing new code.
 | `pack1bit(Glyph)`, `bitmapFontGlyph` | text.dart | 1-bit bitmaps; reliable pure-Dart glyphs (Flutter's offscreen text raster returned empty images on Linux) |
 | `imageToRgb`, `gifForPanel`, `decodeAny` | images.dart | converting user images/GIFs to panel format |
 
+## Effects engine (`dart/ipixel_fx/lib/src/`)
+
+| Block | File | Reuse for |
+|---|---|---|
+| `PanelCanvas` (set/get/line/rect/circle/fade/drawImage/toImage) | canvas.dart | any new scene or drawing feature |
+| `hsv / mix / dim / rgb` | canvas.dart | colour maths everywhere |
+| `PixelFont` (4 sizes) + `Marquee` | fonts.dart | crisp text on the panel; `tools/gen_pixel_fonts.py` regenerates the tables |
+| `Icons8` | icons.dart | 8×8 glyphs for signs/status |
+| `Scene` / `SimpleScene` / `SceneInput` | scene.dart | the contract for a new effect, widget or game |
+| `LivePlayer` | player.dart | streaming any scene; dedups identical frames |
+| `sceneCatalog` | catalog.dart | register new scenes here to appear in the Fun page |
+| `GameScene` (auto-pilot after idle, `touched()`, `autoRestart()`) + `_gameOver()` | scenes/games.dart | base for any new game |
+| `LivePlayer.speed` / `.brightness` | player.dart | global knobs; don't re-implement per scene |
+
 ## Transports
 
 | Block | File |
 |---|---|
-| `BlueZScanner` (throttled: emits only on display changes, ≤ 2/s) + `BlueZLink` | dart/ipixel_bluez/lib/ipixel_bluez.dart |
+| `BlueZScanner` (throttled: emits only on display changes, ≤ 2/s) + `BlueZLink` (AcquireWrite socket, 9 fps) | dart/ipixel_bluez/lib/ipixel_bluez.dart |
 | `FbpLink` (flutter_blue_plus / _windows) | dart/ipixel_app/lib/fbp_link.dart |
 | `DisplayFinder` (picks BlueZ on Linux, FBP elsewhere) | dart/ipixel_app/lib/transport.dart |
 
@@ -38,6 +52,13 @@ Pieces worth reusing when adding features. Reuse these before writing new code.
 | `ScreenCapture` (native-size probe + gst pipe) | viewfinder/capture.dart | raw RGB frames from PipeWire |
 | `locateViewfinder`, `cropExact`, `cropHole` | viewfinder/locate.dart | finding a marker frame and making 1:1 / zoomed crops |
 | `FakeLink` (acks like a real panel) | test/widget_test.dart | widget tests without hardware |
+| `Session` (device + store + player + mic, `stopLive()`) | session.dart | every feature page; call `stopLive()` before uploads |
+| `MicAnalyzer` (PCM → level + 11 bands, FFT) | mic.dart | anything audio-reactive |
+| `ProgramsStore` (slots, playlist, `nextSlot()`) | programs_store.dart | any feature that stores on the panel |
+| `BackgroundMode` | background.dart | Android foreground-service toggle |
+| `_DPad` | pages/fun_page.dart | on-screen controls for interactive scenes |
+| `_GridPainter` + stroke batching | pages/draw_page.dart | pixel editors |
+| integration tests on the real panel | integration_test/*.dart | verifying GUI flows end to end |
 
 ## Python reference (`ipixel/__init__.py`)
 

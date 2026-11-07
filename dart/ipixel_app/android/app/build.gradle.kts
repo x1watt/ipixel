@@ -32,6 +32,10 @@ android {
 
     buildTypes {
         release {
+            // No R8 shrinking: a Flutter release build with R8 does not fit in the 2 GB RAM
+            // this project is built with, and the APK size gain is small for this app.
+            isMinifyEnabled = false
+            isShrinkResources = false
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")

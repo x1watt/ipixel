@@ -18,3 +18,8 @@ __pycache__/
 *.pyc
 # OS
 .DS_Store
+# Downloaded vendor firmware images (not ours to redistribute; regenerate with tools/fetch_firmware.py)
+firmware/
+# Kotlin build sessions
+**/android/.kotlin/
+*.salive

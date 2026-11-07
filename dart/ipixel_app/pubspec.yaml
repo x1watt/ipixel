@@ -40,6 +40,11 @@ dependencies:
   image: ^4.3.0
   ipixel_bluez:
     path: ../ipixel_bluez
+  ipixel_fx:
+    path: ../ipixel_fx
+  record: ^6.1.2
+  flutter_background: ^1.3.0
+  shared_preferences: ^2.5.0
   ipixel_protocol:
     path: ../ipixel_protocol
   cupertino_icons: ^1.0.8

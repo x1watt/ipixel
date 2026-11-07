@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:bluez/bluez.dart';
@@ -89,6 +90,12 @@ class BlueZScanner {
 
 /// [BleLink] over BlueZ D-Bus (Linux, no Flutter needed).
 class BlueZLink implements BleLink {
+  /// Write socket from BlueZ AcquireWrite: ~8x faster than one D-Bus WriteValue per piece.
+  /// While held, BlueZ refuses WriteValue, so every write goes through it (write-without-response;
+  /// the panel's own ack notifications still confirm delivery).
+  RawSocket? _sock;
+  int _sockMtu = 23;
+
   final BlueZClient client;
   final BlueZDevice device;
   final BlueZGattCharacteristic _write, _notify;
@@ -145,6 +152,13 @@ class BlueZLink implements BleLink {
       if (props.contains('Value')) link._ctrl.add(Uint8List.fromList(link._notify.value));
     });
     await link._notify.startNotify();
+    try {
+      final r = await link._write.acquireWrite();
+      link._sock = r.socket;
+      link._sockMtu = r.mtu;
+    } catch (_) {
+      // older BlueZ or characteristic without write-without-response: fall back to WriteValue
+    }
     return link;
   }
 
@@ -152,15 +166,31 @@ class BlueZLink implements BleLink {
   Stream<Uint8List> get notifications => _ctrl.stream;
 
   @override
-  int get maxWriteLength => (_write.mtu ?? 23) - 3;
+  int get maxWriteLength => _sock != null ? (_sockMtu - 3).clamp(20, 509).toInt() : (_write.mtu ?? 23) - 3;
 
   @override
-  Future<void> write(Uint8List data, {bool withResponse = true}) => _write.writeValue(data,
-      type: withResponse ? BlueZGattCharacteristicWriteType.request : BlueZGattCharacteristicWriteType.command);
+  Future<void> write(Uint8List data, {bool withResponse = true}) async {
+    final sock = _sock;
+    if (sock == null) {
+      return _write.writeValue(data,
+          type: withResponse ? BlueZGattCharacteristicWriteType.request : BlueZGattCharacteristicWriteType.command);
+    }
+    var off = 0;
+    while (off < data.length) {
+      final n = sock.write(data, off, data.length - off);
+      if (n == 0) {
+        await Future.delayed(const Duration(milliseconds: 2)); // kernel buffer full, let it drain
+      } else {
+        off += n;
+      }
+    }
+  }
 
   @override
   Future<void> disconnect() async {
     await _sub?.cancel();
+    _sock?.close();
+    _sock = null;
     try {
       await _notify.stopNotify();
       await device.disconnect();

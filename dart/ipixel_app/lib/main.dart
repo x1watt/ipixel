@@ -5,10 +5,16 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:ipixel_protocol/ipixel_protocol.dart';
 
-import 'pages/control_page.dart';
+import 'background.dart';
+import 'pages/draw_page.dart';
+import 'pages/fun_page.dart';
 import 'pages/media_page.dart';
-import 'pages/viewfinder_page.dart';
+import 'pages/music_page.dart';
+import 'pages/programs_page.dart';
 import 'pages/text_page.dart';
+import 'pages/tools_page.dart';
+import 'pages/viewfinder_page.dart';
+import 'session.dart';
 import 'transport.dart';
 
 void main() => runApp(const IPixelApp());
@@ -60,25 +66,27 @@ class _ConnectPageState extends State<ConnectPage> {
   void _scan() {
     _scanSub?.cancel();
     setState(() => _error = null);
-    _scanSub = _finder.scan().listen((r) => setState(() => _results = r),
-        onError: (e) => setState(() => _error = '$e'));
+    _scanSub = _finder.scan().listen((r) => setState(() => _results = r), onError: (e) => setState(() => _error = '$e'));
   }
 
   Future<void> _open(FoundDisplay r) async {
-    debugPrint('connect: ${r.id}');
     setState(() => _connecting = r.id);
-    IPixelDevice? dev;
+    Session? session;
     try {
       final link = await _finder.connect(r);
-      dev = IPixelDevice(link, log: debugPrint);
+      final dev = IPixelDevice(link, log: debugPrint);
       await dev.handshake(cid: r.advert?.cid, pid: r.advert?.pid);
+      session = Session(dev, r.name);
+      await session.store.load();
+      await BackgroundMode.apply();
       if (!mounted) return;
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => DeviceHome(device: dev!, name: r.name)));
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => DeviceHome(session: session!)));
     } catch (e) {
       setState(() => _error = 'Connection failed: $e');
     } finally {
+      await BackgroundMode.stop();
       try {
-        await dev?.close();
+        await session?.dispose();
       } catch (_) {}
       if (mounted) setState(() => _connecting = null);
       _scan();
@@ -104,17 +112,11 @@ class _ConnectPageState extends State<ConnectPage> {
                 ])
               : ListView(padding: const EdgeInsets.all(12), children: [
                   if (_error != null)
-                    Card(
-                        color: Theme.of(context).colorScheme.errorContainer,
-                        child: Padding(padding: const EdgeInsets.all(12), child: Text(_error!))),
+                    Card(color: Theme.of(context).colorScheme.errorContainer, child: Padding(padding: const EdgeInsets.all(12), child: Text(_error!))),
                   if (_results.isEmpty)
                     const Padding(
                       padding: EdgeInsets.all(32),
-                      child: Column(children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text('Scanning for LED_BLE_… displays'),
-                      ]),
+                      child: Column(children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Scanning for LED_BLE_… displays')]),
                     ),
                   for (final r in _results)
                     Card(
@@ -138,23 +140,28 @@ class _ConnectPageState extends State<ConnectPage> {
 
 // ---------------------------------------------------------------- device home
 
+class _Feature {
+  final IconData icon;
+  final String title, blurb;
+  final Widget Function(bool active) build;
+  const _Feature(this.icon, this.title, this.blurb, this.build);
+}
+
 class DeviceHome extends StatefulWidget {
-  final IPixelDevice device;
-  final String name;
-  const DeviceHome({super.key, required this.device, required this.name});
+  final Session session;
+  const DeviceHome({super.key, required this.session});
   @override
   State<DeviceHome> createState() => _DeviceHomeState();
 }
 
 class _DeviceHomeState extends State<DeviceHome> {
-  int _tab = 0;
-  static const _viewfinderTab = 2;
+  int? _tab; // null = home grid (narrow layouts)
+  late final List<_Feature> _features;
+  bool _bg = true;
 
-  // Disconnect cleanly when the window is closed, otherwise BlueZ keeps a stale link
-  // and the panel stops advertising until it times out.
   late final _exit = AppLifecycleListener(onExitRequested: () async {
     try {
-      await widget.device.close();
+      await widget.session.dispose();
     } catch (_) {}
     return ui.AppExitResponse.exit;
   });
@@ -162,7 +169,20 @@ class _DeviceHomeState extends State<DeviceHome> {
   @override
   void initState() {
     super.initState();
-    _exit; // register
+    _exit;
+    BackgroundMode.enabled.then((v) => mounted ? setState(() => _bg = v) : null);
+    final s = widget.session;
+    _features = [
+      _Feature(Icons.auto_awesome, 'Fun', 'Clocks, effects, signs, widgets, games', (a) => FunPage(session: s, active: a)),
+      _Feature(Icons.text_fields, 'Text', 'Scrolling text the panel keeps playing', (_) => TextPage(session: s)),
+      _Feature(Icons.image_outlined, 'Image / GIF', 'Pictures and animations', (_) => MediaPage(session: s)),
+      _Feature(Icons.brush, 'Draw', 'Pixel art, live on the panel', (a) => DrawPage(session: s, active: a)),
+      _Feature(Icons.graphic_eq, 'Music', 'Microphone visualizer', (a) => MusicPage(session: s, active: a)),
+      if (Platform.isLinux)
+        _Feature(Icons.crop_free, 'Viewfinder', 'Mirror part of the screen 1:1', (a) => ViewfinderPage(device: s.device, active: a, session: s)),
+      _Feature(Icons.playlist_play, 'Programs', 'What is stored on the panel', (_) => ProgramsPage(session: s)),
+      _Feature(Icons.tune, 'Tools', 'Clock faces, timers, schedules, settings', (_) => ToolsPage(session: s)),
+    ];
   }
 
   @override
@@ -173,42 +193,83 @@ class _DeviceHomeState extends State<DeviceHome> {
 
   @override
   Widget build(BuildContext context) {
-    final p = widget.device.panel!;
-    final pages = <(IconData, String, Widget)>[
-      (Icons.text_fields, 'Text', TextPage(device: widget.device)),
-      (Icons.image_outlined, 'Image / GIF', MediaPage(device: widget.device)),
-      (Icons.crop_free, 'Viewfinder',
-          ViewfinderPage(device: widget.device, active: _tab == _viewfinderTab)),
-      (Icons.tune, 'Control', ControlPage(device: widget.device)),
-    ];
-    final wide = MediaQuery.sizeOf(context).width >= 720;
-    final body = IndexedStack(index: _tab, children: [for (final pg in pages) pg.$3]);
-    final seeThrough = _tab == _viewfinderTab;
-    return Scaffold(
-      // transparent only behind the viewfinder tab; its page paints its own opaque parts
-      backgroundColor: seeThrough ? Colors.transparent : null,
-      appBar: AppBar(title: Text('${widget.name} · ${p.width}×${p.height}')),
-      body: wide
-          ? Row(children: [
-              NavigationRail(
-                selectedIndex: _tab,
-                onDestinationSelected: (i) => setState(() => _tab = i),
-                labelType: NavigationRailLabelType.all,
-                destinations: [
-                  for (final pg in pages) NavigationRailDestination(icon: Icon(pg.$1), label: Text(pg.$2)),
-                ],
-              ),
-              const VerticalDivider(width: 1),
-              Expanded(child: body),
-            ])
-          : body,
-      bottomNavigationBar: wide
-          ? null
-          : NavigationBar(
-              selectedIndex: _tab,
-              onDestinationSelected: (i) => setState(() => _tab = i),
-              destinations: [for (final pg in pages) NavigationDestination(icon: Icon(pg.$1), label: pg.$2)],
+    final p = widget.session.panel;
+    final wide = MediaQuery.sizeOf(context).width >= 760;
+    final tab = _tab ?? (wide ? 0 : null);
+    final seeThrough = tab != null && _features[tab].title == 'Viewfinder';
+    final title = '${widget.session.name} · ${p.width}×${p.height}${tab != null && !wide ? ' · ${_features[tab].title}' : ''}';
+    final body = tab == null
+        ? _homeGrid(context)
+        : IndexedStack(index: tab, children: [for (var i = 0; i < _features.length; i++) _features[i].build(i == tab)]);
+    return PopScope(
+      canPop: tab == null || wide,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setState(() => _tab = null);
+      },
+      child: Scaffold(
+        backgroundColor: seeThrough ? Colors.transparent : null,
+        appBar: AppBar(
+          title: Text(title, overflow: TextOverflow.ellipsis),
+          leading: tab != null && !wide ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => _tab = null)) : null,
+          actions: [
+            PopupMenuButton<String>(
+              onSelected: (v) {
+                if (v == 'disconnect') {
+                  Navigator.of(context).pop();
+                  return;
+                }
+                if (v == 'bg') {
+                  final next = !_bg;
+                  setState(() => _bg = next);
+                  BackgroundMode.setEnabled(next);
+                }
+              },
+              itemBuilder: (_) => [
+                if (Platform.isAndroid) CheckedPopupMenuItem(value: 'bg', checked: _bg, child: const Text('Keep running in background')),
+                const PopupMenuItem(value: 'disconnect', child: Text('Disconnect')),
+              ],
             ),
+          ],
+        ),
+        body: wide
+            ? Row(children: [
+                NavigationRail(
+                  selectedIndex: tab,
+                  onDestinationSelected: (i) => setState(() => _tab = i),
+                  labelType: NavigationRailLabelType.all,
+                  destinations: [for (final f in _features) NavigationRailDestination(icon: Icon(f.icon), label: Text(f.title))],
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: body),
+              ])
+            : body,
+      ),
     );
   }
+
+  Widget _homeGrid(BuildContext context) => GridView.count(
+        padding: const EdgeInsets.all(12),
+        crossAxisCount: MediaQuery.sizeOf(context).width > 480 ? 3 : 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.15,
+        children: [
+          for (var i = 0; i < _features.length; i++)
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => setState(() => _tab = i),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Icon(_features[i].icon, size: 32, color: Theme.of(context).colorScheme.primary),
+                    const Spacer(),
+                    Text(_features[i].title, style: Theme.of(context).textTheme.titleMedium),
+                    Text(_features[i].blurb, style: Theme.of(context).textTheme.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  ]),
+                ),
+              ),
+            ),
+        ],
+      );
 }

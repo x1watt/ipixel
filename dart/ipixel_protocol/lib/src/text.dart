@@ -15,12 +15,36 @@ class Glyph {
 /// for nicer fonts / non-Latin scripts; [bitmapFontGlyph] is a pure-Dart default.
 typedef GlyphRenderer = Glyph Function(String ch, int height);
 
-/// Text animation (header byte 4). 1 = scroll left is verified on hardware;
-/// the others follow the app's effect picker order and are unverified.
+/// Text animation (header byte 4), in the official app's picker order.
+/// 0, 1 verified on hardware. Up/down are for vertical text on tall panels.
 class TextEffect {
   static const fixed = 0;
   static const scrollLeft = 1;
   static const scrollRight = 2;
+  static const scrollUp = 3;
+  static const scrollDown = 4;
+  static const blink = 5;
+  static const breathe = 6;
+  static const snowflakes = 7;
+  static const laser = 8;
+  static const names = ['Static', 'Scroll left', 'Scroll right', 'Scroll up', 'Scroll down', 'Blink', 'Breathe', 'Snow', 'Laser'];
+}
+
+/// Horizontal alignment (header byte 2) for text that fits.
+class TextAlign {
+  static const left = 0, center = 1, right = 2;
+}
+
+/// Vertical alignment (header byte 3): the firmware counts from 3.
+class TextVAlign {
+  static const top = 3, middle = 4, bottom = 5;
+}
+
+/// Colour mode (header byte 6): 1 = solid RGB; 2..9 = firmware gradient/texture presets
+/// (the RGB bytes are then ignored). 0 is what the app sends for pure white.
+class TextColorMode {
+  static const solid = 1;
+  static int gradient(int preset) => 2 + preset.clamp(0, 7);
 }
 
 /// Pack a glyph the way TextAgreement.getTextData does: rows padded to a multiple
@@ -62,8 +86,9 @@ Uint8List encodeText(
   int effect = TextEffect.scrollLeft,
   int speed = 50,
   int height = 16,
-  int hAlign = 0,
-  int vAlign = 0,
+  int hAlign = TextAlign.center,
+  int vAlign = TextVAlign.middle,
+  int colorMode = TextColorMode.solid,
   GlyphRenderer renderer = bitmapFontGlyph,
   int? ledType,
   List<int> border = const [0, 0, 0],
@@ -71,7 +96,7 @@ Uint8List encodeText(
   final chars = text.replaceAll('\n', ' ').runes.map(String.fromCharCode).toList();
   final out = BytesBuilder()
     ..add([
-      ...u16le(chars.length), hAlign, vAlign, effect, speed, 0, ...color,
+      ...u16le(chars.length), hAlign, vAlign, effect, speed, colorMode, ...color,
       background == null ? 0 : 1, ...(background ?? const [0, 0, 0]),
     ]);
   if (ledType != null && ((ledType >= 16 && ledType < 20) || ledType >= 24)) out.add(border);

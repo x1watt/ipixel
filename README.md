@@ -20,13 +20,16 @@ the official phone app, or turn one into a small **improvised display** for your
 
 | | GUI | CLI |
 |---|:-:|:-:|
-| Scan & connect (no pairing) | ✅ | ✅ |
-| Scrolling or static text, any color | ✅ | ✅ |
+| Scan & connect (no pairing); keeps running in the background on Android (optional) | ✅ | ✅ |
+| **Fun**: 35 live scenes rendered by the app and streamed at up to 9 fps: clocks (digital, analog, binary, date), Pomodoro timer, stopwatch, countdown-to-date, plasma / fire / matrix / rainbow / starfield / warp / sparkle / bouncing balls / Game of Life / lava lamp, text effects (rainbow, typewriter, wave, fire…), ticker, icon parade, 10 ready-made signs (ON AIR, OPEN, DND…), system monitor, progress bar, status icons, and 5 games (Snake, Pong, Breakout, Flappy, Tetris) with keyboard (arrows/WASD) or on-screen controls, auto-players, speed and brightness controls | ✅ | – |
+| Text programs the panel plays by itself: 9 firmware animations, alignment, 8 gradient presets, speed, 16/32 px | ✅ | ✅ |
 | Images and animated GIFs (rescaled to the panel) | ✅ | ✅ |
-| Brightness, screen on/off, upside-down, built-in clock faces | ✅ | ✅ |
+| **Draw**: pixel-art editor, live on the panel (pen, eraser, mirrors), storable as a program | ✅ | – |
+| **Music**: microphone visualizer, either drawn by the panel firmware (7 styles) or by the app | ✅ | – |
 | **Viewfinder**: see-through frame, whatever is under it goes to the LED (1:1, 2×, 3×) | ✅ Linux Wayland | – |
-| Live RGB frames, up to ~9 fps | API | API |
-| Delivery confirmed by the display's own acks | ✅ | ✅ |
+| **Programs**: stored slots, playlist, delete | ✅ | – |
+| **Tools**: 10 clock faces, countdown, stopwatch, scoreboard, bike signs, scheduled on/off, picture alarms, password, brightness / power / flip | ✅ | partly |
+| Delivery confirmed by the display's own acks; `hwcheck` reports what a panel supports | ✅ | ✅ |
 
 ## Quick start
 
@@ -56,6 +59,8 @@ dart run bin/ipixel.dart gif party.gif             # any image/GIF, rescaled
 dart run bin/ipixel.dart brightness 40
 dart run bin/ipixel.dart clock 2
 dart run bin/ipixel.dart selftest                  # visual check of every feature
+dart run bin/ipixel.dart hwcheck                   # which firmware features does this panel ack?
+dart run bin/ipixel.dart bench                     # live-frame throughput
 ```
 
 Add `-a C3:EF:3E:4F:7E:B7` to pick a specific display, or `-v` to print every packet.
@@ -96,6 +101,7 @@ docs/
 dart/
   ipixel_protocol/       pure-Dart protocol: packets, panel table, text/image encoders, device API
   ipixel_bluez/          Linux BlueZ transport (scanner + BleLink), pure Dart
+  ipixel_fx/             live effects engine: pixel canvas, fonts, 35 scenes incl. games (pure Dart)
   ipixel_cli/            command-line tool (Linux)
   ipixel_app/            Flutter app (Linux, Windows, macOS, Android)
 ipixel/, tools/          Python (bleak) reference tools used to reverse-engineer and verify
@@ -124,11 +130,14 @@ cd dart/ipixel_app && flutter test integration_test/text_real_test.dart -d linux
                                                      # end-to-end on a real panel nearby
 ```
 
-## Not implemented yet
+## Not implemented / caveats
 
-Password lock, alarms, scoreboard, countdown, music/rhythm modes and stored-program management
-are in the spec but not exposed in the UI. Firmware updates (OTA) are deliberately left out.
-The viewfinder is Linux/Wayland-only for now.
+* Countdown, stopwatch, scoreboard and bike signs are sent exactly as the official app does, but
+  the 64×16 test panel never acknowledges them; they may be for other models.
+* Dual-panel "eyes", split-screen templates, camera projection and firmware updates (OTA) are
+  left out. The viewfinder is Linux/Wayland-only for now; the microphone on Linux needs
+  `parecord` (package `pulseaudio-utils`).
+* Android builds have R8 shrinking disabled so they fit in 2 GB of RAM.
 
 ## Disclaimer
 

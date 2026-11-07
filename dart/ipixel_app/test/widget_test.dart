@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ipixel_app/viewfinder/locate.dart';
 import 'package:ipixel_app/pages/text_page.dart';
+import 'package:ipixel_app/session.dart';
 import 'package:ipixel_protocol/ipixel_protocol.dart';
 
 /// Fake panel: acks every frame like the real 64x16 display.
@@ -38,18 +39,19 @@ class FakeLink implements BleLink {
 void main() {
   testWidgets('text page sends text and reports done', (tester) async {
     final link = FakeLink();
-    late IPixelDevice dev;
+    late Session session;
     await tester.runAsync(() async {
-      dev = IPixelDevice(link);
+      final dev = IPixelDevice(link);
       await dev.handshake();
+      session = Session(dev, 'test');
     });
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: TextPage(device: dev))));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: TextPage(session: session))));
     await tester.enterText(find.byType(TextField), 'Hi there');
     await tester.tap(find.text('Send'));
     await tester.pump();
-    for (var i = 0; i < 20; i++) {
+    for (var i = 0; i < 30; i++) {
       await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100)); // let the page's own timers (player stop delay) fire
     }
     final status = tester.widgetList<Text>(find.byType(Text)).map((t) => t.data).whereType<String>()
         .firstWhere((s) => s.startsWith('Text:') || s.startsWith('Text…') || s.startsWith('Text failed'), orElse: () => '<none>');

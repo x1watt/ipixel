@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:ipixel_protocol/ipixel_protocol.dart';
 
+import '../session.dart';
 import '../viewfinder/capture.dart';
 import '../viewfinder/locate.dart';
 import 'common.dart';
@@ -18,7 +19,8 @@ import 'pixels.dart';
 class ViewfinderPage extends StatefulWidget {
   final IPixelDevice device;
   final bool active;
-  const ViewfinderPage({super.key, required this.device, required this.active});
+  final Session? session;
+  const ViewfinderPage({super.key, required this.device, required this.active, this.session});
   @override
   State<ViewfinderPage> createState() => _ViewfinderPageState();
 }
@@ -53,6 +55,7 @@ class _ViewfinderPageState extends State<ViewfinderPage> {
       _status = 'Pick the monitor this window is on, in the system dialog…';
     });
     try {
+      await widget.session?.stopLive();
       await d.diyMode(DiyMode.enterClear);
       final cap = await ScreenCapture.start(fps: 1);
       _cap = cap;

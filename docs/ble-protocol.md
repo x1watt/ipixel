@@ -83,25 +83,30 @@ status 0 = rejected / failed (e.g. wrong live-frame size, CRC mismatch)
 | `0x8004` | brightness | `level` 0–100 | ack | ✅ |
 | `0x0107` | screen power | `1` on / `0` off | ack | ✅ |
 | `0x8006` | upside-down | `1` / `0` | ack | ✅ |
-| `0x0106` | clock face | `style, 12h?(1)/24h(0), showDate, yy-2000, MM, dd, week` | ack | ✅ |
+| `0x0106` | clock face | `style(1-based), 0=12h/1=24h, showDate, yy-2000, MM, dd, week` | ack | ✅ (styles 1-3 seen) |
 | `0x8012` | set weekday | `week` | | |
 | `0x0104` | DIY (draw) mode | `0` quit+restore, `1` enter+clear, `2` quit+keep, `3` enter keep | ack | ✅ |
 | `0x0105` | DIY draw pixels | header byte 4 = moveType, then `R G B (x y)…` | none | ✅ |
 | `0x8003` | delete all stored programs | – | | |
-| `0x0102` | delete slots | `u16 count, slot…` | | |
+| `0x0102` | delete slots | `u16 count, slot…` | ack | |
+| `0x8008` | playlist: play stored slots in order | `count, 0, slot…` | ack | ✅ |
+| `0x8011` | scheduled power on/off | `onOff, index(0-9), weekMask, hh, mm` | ack | |
 | `0x0103` | text speed | `speed` | | |
-| `0x0101` | exit current mode | – | | |
-| `0x800D` | countdown | `flag, min, sec` | | |
-| `0x8009` | stopwatch | `flag` | | |
-| `0x800A` | scoreboard | `u16 a, u16 b` | | |
-| `0x0006` | sport display | `mode, speed, decimal` | | |
+| `0x0101` | exit current mode | – | **none** on test unit | ⚠ |
+| `0x800D` | countdown | `flag(0 reset,1 start,2 pause,3 resume), min, sec` | **none** on test unit | ⚠ |
+| `0x8009` | stopwatch | `flag` as above | **none** on test unit | ⚠ |
+| `0x800A` | scoreboard | `u16 a, u16 b` (max 999, 99 on narrow panels) | **none** on test unit | ⚠ |
+| `0x0006` | riding sign | `mode(0 left,1 right,2 go,3 stop,4 SOS,5 flash,6 speed), km/h, tenths` | **none** on test unit | ⚠ |
 | `0x0200` | music rhythm level | `level, mode` | none | |
-| `0x0201` | music spectrum | `mode` + 11 bars (0–15) | none | |
-| `0x0204` | set password | `enable, g1, g2, g3` (2-digit groups) | | |
-| `0x0205` | verify password | `g1, g2, g3` | | |
+| `0x0201` | music spectrum | `mode(0-4)` + 11 bars (0–15); the panel draws the visualizer | none | ✅ sent |
+| `0x0204` | set password | `enable, g1, g2, g3` (2-digit groups; 4-digit models: g3 = 0) | `…01` = ok | |
+| `0x0205` | verify password | `g1, g2, g3` | `…01` = ok | |
+| `0x8000` | alarm with picture | 24-byte header + image frames (§5.5) | ack per frame | |
 | `0xC0xx` | OTA (`len, otaType, 0xC0, …`) | see `utils/OtaUpData.java` | | don't |
 
-**Week** = Monday 1 … Sunday 7 (`baselib/utils/DateUtils.getWeekOfDate`).
+**Week** = Monday 1 … Sunday 7 (`baselib/utils/DateUtils.getWeekOfDate`). **weekMask** (schedule, alarm) = bit0 enabled, bit1 Mon … bit7 Sun.
+
+⚠ = the official app sends it, but the 64×16 test unit never replied; whether it displays anything is unverified.
 DIY move types: 0 none, 1 horizontal mirror, 2 vertical mirror, 3 move all, 4 erase.
 
 ### 4.1 Handshake reply
@@ -190,7 +195,19 @@ per character:
 matches the panel height (16 on the test unit).
 Instead of `0x80`, a glyph record can be an embedded emoji JPEG (`8|9|10|11|12, u24 len, jpeg`).
 
-### 5.4 Other data types (not verified)
+### 5.4 Text header details (from the app source)
+
+* `hAlign`: 0 left, 1 centre, 2 right. `vAlign`: 3 top, 4 middle, 5 bottom (the firmware counts from 3).
+* `effect`: 0 static, 1 scroll left ✅, 2 scroll right, 3 up, 4 down, 5 blink ✅, 6 breathe, 7 snow ✅, 8 laser ✅ (acked; look unverified).
+* `colorMode`: 1 = solid RGB; 2..9 = firmware gradient/texture presets (RGB ignored) ✅ acked; 0 is what the app sends for white.
+* Taller panels (height ≥ 32) accept 16 px and 32 px glyphs; 64-high panels also 64 px.
+* Panels with LED types 16–19 or ≥ 24 take 3 extra header bytes: border type (0–24), border speed, border effect (0–3).
+
+### 5.5 Alarm — `0x8000`
+
+24-byte header per frame: `[u16 len][00 80][index][weekMask][hh][mm][u16 ringSec][type][buzzer][option 0/2][u32 imgLen][u32 crc32][00 00][index+120]` + image chunk (frame size as in §5). `ringSec` ∈ {10, 30, 60, 300, 900}. Up to 10 alarms; to disable, resend with the enabled bit cleared. There is no delete command.
+
+### 5.6 Other data types (not verified)
 
 `0x0001` video frames, `0x0002` still image, `0x0004` templates/sub-zones, alarm images
 (`0x8000`, see `SendCore.payLoadAlarmClockData`).
@@ -210,16 +227,26 @@ Instead of `0x80`, a glyph record can be an embedded emoji JPEG (`8|9|10|11|12, 
 
 Live 64×16 frames (3081 B each), measured from Linux/BlueZ ✅:
 
-| Write mode for bulk data | Frames/s |
+| Write path | Frames/s |
 |---|---|
-| write-with-response (509 B pieces) | 4.4 |
-| write-without-response, waiting for the per-frame ack | 9.0 |
+| D-Bus `WriteValue`, with response (509 B pieces) | 1.2 (Dart) / 4.4 (Python) |
+| D-Bus `WriteValue`, without response | 9.0 (Python) |
+| BlueZ `AcquireWrite` socket, without response | 9.1 (Dart) |
 
-The per-frame ack is enough flow control, so write-without-response is safe for uploads.
+The per-frame ack is enough flow control, so write-without-response is safe for uploads. On
+BlueZ, use `AcquireWrite` (one D-Bus round trip per 509-byte piece is what makes `WriteValue` slow).
 
-## 8. Implementations in this repo
+## 8. Features the official app implements on the phone
+
+These need no firmware support; they are plain live frames (`0x0000`) or GIF uploads:
+games (Snake, Tetris, Pong), camera projection, DIY animation, text-animation GIFs, templates.
+The firmware only renders: text programs, GIFs, clock faces, the music visualizer, countdown /
+stopwatch / scoreboard / riding signs (on models that support them) and DIY point drawing.
+
+## 9. Implementations in this repo
 
 * `dart/ipixel_protocol`: a pure-Dart, transport-agnostic implementation with golden-byte tests.
+* `dart/ipixel_fx`: a live effects engine (pixel canvas, fonts, clocks, effects, games) streaming `0x0000` frames.
 * `dart/ipixel_bluez`: the Linux BlueZ scanner and `BleLink`.
 * `dart/ipixel_cli`: a Linux CLI (`dart run bin/ipixel.dart selftest`).
 * `dart/ipixel_app`: a Flutter app (Linux/Windows/macOS/Android) with a see-through viewfinder.

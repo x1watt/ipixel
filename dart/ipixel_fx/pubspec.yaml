@@ -1,0 +1,13 @@
+name: ipixel_fx
+description: Pure-Dart live effects engine for small LED panels - pixel canvas, pixel fonts, icons, scenes (effects, clocks, widgets, games) and a player that streams frames to an iPixel display.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: ^3.4.0
+dependencies:
+  image: ^4.3.0
+  ipixel_protocol:
+    path: ../ipixel_protocol
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0

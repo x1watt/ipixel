@@ -25,7 +25,7 @@ void main() {
     expect(hex(IPixelCommands.hwInfo()), '04 00 05 80');
     expect(hex(IPixelCommands.diyMode(DiyMode.enterClear)), '05 00 04 01 01');
     expect(hex(IPixelCommands.clockMode(now: DateTime(2026, 11, 7))), // Saturday -> 6
-        '0b 00 06 01 01 00 00 1a 0b 07 06');
+        '0b 00 06 01 01 01 00 1a 0b 07 06');
   });
 
   test('diy draw', () {
@@ -70,8 +70,22 @@ void main() {
 
   test('text header', () {
     final t = encodeText('A', color: [0, 200, 255], effect: 1, speed: 50);
-    expect(hex(t.sublist(0, 14)), '01 00 00 00 01 32 00 00 c8 ff 00 00 00 00');
+    expect(hex(t.sublist(0, 14)), '01 00 01 04 01 32 01 00 c8 ff 00 00 00 00');
     expect(t[14], 0x80);
     expect(t[19], 16); // glyph height
+  });
+
+  test('firmware feature commands (from app source)', () {
+    expect(hex(IPixelCommands.playlist([3, 1])), '08 00 08 80 02 00 03 01');
+    expect(hex(IPixelCommands.countdown(1, 5, 30)), '07 00 0d 80 01 05 1e');
+    expect(hex(IPixelCommands.stopwatch(2)), '05 00 09 80 02');
+    expect(hex(IPixelCommands.scoreboard(300, 7)), '08 00 0a 80 2c 01 07 00');
+    expect(hex(IPixelCommands.sport(6, speed: 23, tenths: 4)), '07 00 06 00 06 17 04');
+    expect(IPixelCommands.weekMask([true, false, false, false, false, false, true]), 0x83);
+    expect(hex(IPixelCommands.schedule(index: 0, on: true, hour: 7, minute: 30, days: List.filled(7, true))),
+        '09 00 11 80 01 00 ff 07 1e');
+    expect(hex(IPixelCommands.setPassword(true, [12, 34, 56])), '08 00 04 02 01 0c 22 38');
+    expect(hex(IPixelCommands.verifyPassword([12, 34])), '07 00 05 02 0c 22 00');
+    expect(hex(IPixelCommands.rhythmChart(2, [15, 3])), '10 00 01 02 02 0f 03 00 00 00 00 00 00 00 00 00');
   });
 }

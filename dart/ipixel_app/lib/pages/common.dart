@@ -5,6 +5,9 @@ const panelColors = <Color>[
   Colors.black, Colors.white, Colors.red, Colors.orange, Colors.amber, Colors.green, Colors.cyan, Colors.blue, Colors.purple,
 ];
 
+/// 0xRRGGBB int for the fx engine.
+int colorToInt(Color c) => ((c.r * 255).round() << 16) | ((c.g * 255).round() << 8) | (c.b * 255).round();
+
 List<int> colorToRgb(Color c) => [(c.r * 255).round(), (c.g * 255).round(), (c.b * 255).round()];
 
 class ColorRow extends StatelessWidget {

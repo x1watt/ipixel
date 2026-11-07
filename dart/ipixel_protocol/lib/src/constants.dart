@@ -38,14 +38,18 @@ class Cmd {
   static const verifyPassword = 0x0205;
   static const sport = 0x0006;
 
+  static const alarm = 0x8000; // alarm with image (multi-frame)
   static const handshake = 0x8001; // a.k.a. getLedType; also sets time
   static const deleteAll = 0x8003;
   static const brightness = 0x8004;
   static const hwInfo = 0x8005;
   static const upsideDown = 0x8006;
+  static const eyesMode = 0x8007; // dual-panel "eyes" remote: [mode][lang]
+  static const playlist = 0x8008; // which stored slots to play, in order
   static const stopwatch = 0x8009;
   static const scoreboard = 0x800A;
   static const countdown = 0x800D;
+  static const schedule = 0x8011; // scheduled power on/off
   static const setWeek = 0x8012;
 }
 

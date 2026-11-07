@@ -47,12 +47,33 @@ class IPixelCommands {
   static Uint8List deleteSlots(List<int> slots) =>
       frame(Cmd.deleteSlots, [...u16le(slots.length), ...slots]);
 
-  /// Built-in clock face; also syncs the date.
+  /// Built-in clock face (1-based [style]; most panels have 8-10); also syncs the date.
+  /// Byte 5 is 0 for 12-hour and 1 for 24-hour display (BaseSend.sendColockMode).
   static Uint8List clockMode({int style = 1, bool h24 = true, bool showDate = false, DateTime? now}) {
     final t = now ?? DateTime.now();
     return frame(Cmd.clockMode,
-        [style, h24 ? 0 : 1, showDate ? 1 : 0, t.year - 2000, t.month, t.day, _week(t)]);
+        [style, h24 ? 1 : 0, showDate ? 1 : 0, t.year - 2000, t.month, t.day, _week(t)]);
   }
+
+  /// Play the given stored slots in order (firmware "channel list"). Ack status 1 = accepted.
+  static Uint8List playlist(List<int> slots) => frame(Cmd.playlist, [slots.length, 0, ...slots]);
+
+  /// Scheduled power on/off entry. [index] 0-based (max 10), [enabled] + [days] (Mon..Sun) form
+  /// the week bitmask: bit0 = enabled, bit1 = Mon … bit7 = Sun.
+  static Uint8List schedule({required int index, required bool on, required int hour, required int minute,
+      required List<bool> days, bool enabled = true}) =>
+      frame(Cmd.schedule, [on ? 1 : 0, index, weekMask(days, enabled: enabled), hour, minute]);
+
+  static int weekMask(List<bool> days, {bool enabled = true}) {
+    var m = enabled ? 1 : 0;
+    for (var i = 0; i < 7 && i < days.length; i++) {
+      if (days[i]) m |= 1 << (i + 1);
+    }
+    return m;
+  }
+
+  /// Riding/sport sign: 0 left, 1 right, 2 go, 3 stop, 4 SOS, 5 flash, 6 speed ([speed] km/h, [tenths]).
+  static Uint8List sport(int mode, {int speed = 0, int tenths = 0}) => frame(Cmd.sport, [mode, speed, tenths]);
 
   static Uint8List diyMode(DiyMode mode) => frame(Cmd.diyMode, [mode.value]);
 
@@ -64,9 +85,14 @@ class IPixelCommands {
     return Uint8List.fromList([...u16le(len), ...u16le(Cmd.diyDraw), moveType, ...payload]);
   }
 
+  /// Countdown. [flag]: 0 reset, 1 start, 2 pause, 3 resume. Reset sends 0:00.
   static Uint8List countdown(int flag, int minutes, int seconds) =>
       frame(Cmd.countdown, [flag, minutes, seconds]);
+
+  /// Stopwatch. [flag]: 0 reset, 1 start, 2 pause, 3 resume.
   static Uint8List stopwatch(int flag) => frame(Cmd.stopwatch, [flag]);
+
+  /// Two scores (0..999, or 0..99 on narrow panels), little-endian.
   static Uint8List scoreboard(int a, int b) => frame(Cmd.scoreboard, [...u16le(a), ...u16le(b)]);
 
   /// Music rhythm level/mode (fire-and-forget).
