@@ -65,6 +65,14 @@ Pieces worth reusing when adding features. Reuse these before writing new code.
 `frame`, `_send_frames`, `pack_1bit`, `encode_text` and `PANEL_TYPES` are handy for quick hardware
 experiments before porting to Dart.
 
+## Firmware / OTA tooling (`tools/`)
+
+| Piece | File | Reuse when |
+| --- | --- | --- |
+| `fetch_firmware.py` (AES + form OTA queries, family + JieLi sweeps) | tools/fetch_firmware.py | pulling any iPixel/Heaton firmware image from the server |
+| `ufw_parse.py` (JieLi `.ufw` directory parser + extractor) | tools/ufw_parse.py | inspecting/carving any JieLi AC695x/BR22 `.ufw` |
+| `entropy`, `find_directory` helpers | tools/ufw_parse.py | fingerprinting encrypted vs plaintext firmware regions |
+
 ## Candidates (not extracted yet)
 
 * A "time payload" helper (`hh mm ss` / `yy MM dd week`), duplicated in `IPixelCommands.handshake`,

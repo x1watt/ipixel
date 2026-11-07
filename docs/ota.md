@@ -83,15 +83,37 @@ Structure:
   `edr_ota2.bin`, `nor_ota.bin`, `dev_nor_ota.bin`, `lcflash_ota.bin`, `cfg_tool.bin`, plus the
   transport stubs `uart_update.bin` / `usb_update2.bin` / `sd_update2.bin` and the handlers
   `user_norflash_ufw_update` / `user_lc_flash_ufw_update` / `UPDATE_JUMP`.
+- **Directory format** (parsed by `tools/ufw_parse.py`): an array of 32-byte entries, each
+  `[4B checksum][4B offset LE, file-relative][4B size LE][1B type][1B 0][1B index][1B 0][16B name]`.
+  Offsets chain contiguously from `0x140`. `type` is `0x41` for normal OTA images, `0x01` for a
+  local-only stub (`uart_update.bin`). The file carries two directories (a NOR-flash set and an
+  LC-flash set — note the `user_norflash_ufw_update` / `user_lc_flash_ufw_update` handlers).
+- **Checksum is JieLi-custom.** The 4-byte per-entry checksum matches neither CRC32 (zlib) nor
+  CRC16-CCITT of the payload; it is the lib's `cd03_crc_encode` scheme. Integrity is not a stock CRC.
 - **`JLUFW` is a trailer magic**, not a header: at offset `len-16` (`4a4c554657`), zero-padded to
   the end. Immediately before it is a 32-byte block (shape of a SHA-256 digest) preceded by another
   ~32-byte block — consistent with a signature/hash footer that the bootloader checks.
-- Decrypting the compressed/encrypted partitions needs JieLi's per-file key/scheme from
-  `libjl_ota_auth.so` (the §3 auth blocker); it is not needed just to identify the chip/format.
 
-Net: the firmware route has now delivered everything it can without touching hardware — chip family
-(**AC695x/BR22**) and the exact `.ufw` layout are known. What remains (per-file key, exact die,
-flash readback, recovery pads) is gated on physical access, unchanged from §4.
+### 2.3 The auth lib, and where the decryption key actually lives
+
+`libjl_ota_auth.so` (extracted from the APK's `arm64-v8a` split; aarch64, 15 KB, stripped, NDK
+r29) is JieLi's **RcspAuth** device handshake — nothing more. Exports: `function_xiaomi`,
+`function_E21`, `function_E1test`, `cd03_crc_encode`, `CRC16`, `parse_fw_info`, `getRandomAuthData`,
+`getEncryptedAuthData`, `setLinkKey`, `decrypt`. Its `decrypt` + a 256-byte `.rodata` table serve
+the **link-key challenge/response**, not firmware decryption. So:
+
+- **The `.ufw` payload key is chip-side, not in the app.** Nothing in the APK can decrypt the
+  partition images. This matches how JieLi OTA works: the device's bootloader decrypts the image.
+- **But the key is obtainable without hardware.** Per the community `gamesir-fw` tool, JieLi's
+  per-chip-model **Flash Tool (download tool) `.exe` embeds the chip key** and can be made to emit a
+  decrypted app image. The realistic next software step is therefore to obtain the AC695x/BR22
+  Flash Tool or matching JieLi SDK for this board and lift the key — not to attack `libjl_ota_auth.so`.
+
+Net: the firmware route has delivered everything the server + APK can give without touching
+hardware — chip family (**AC695x/BR22**), the exact `.ufw` layout, the directory/checksum/trailer
+scheme, and the fact that the auth lib is handshake-only. The remaining software unknown is the
+chip key (likely inside the JieLi Flash Tool); the remaining hardware unknowns (exact die suffix,
+flash readback, recovery pads) are unchanged from §4.
 
 ## 3. The JieLi RCSP OTA path (what applies to us)
 
