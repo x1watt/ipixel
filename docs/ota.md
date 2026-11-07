@@ -10,10 +10,13 @@ The test unit identifies itself as **"Funscreen – ACT1033"**: the app maps the
 CID `0007` / PID `04` to that product name (`ui/adapter/NewConnectAdapter.java`). ACT1025 is
 CID `0007`/PID `01`.
 
-- **SoC:** a JieLi (Zhuhai Jieli, 杰理) BLE chip. The app ships `libjl_ota_auth.so` and the panel
-  exposes JieLi's RCSP OTA GATT service `0xAE00` (write `AE01`, notify `AE02`). The exact die
-  (e.g. AC6951C, as community projects report for sibling panels) **cannot** be read from the app or
-  over BLE — it needs a photo of the PCB markings.
+- **SoC: JieLi AC695x / "BR22" family** (Zhuhai Jieli, 杰理). The app ships `libjl_ota_auth.so`
+  and the panel exposes JieLi's RCSP OTA GATT service `0xAE00` (write `AE01`, notify `AE02`).
+  The family is now confirmed directly from a real vendor `.ufw` (see §2.2): its plaintext strings
+  include `AC695x_update`, `695X_LE_UPDATE`, `JL-BR22`, `br22xx`, `JLBTSDK`. Community projects
+  report the specific die as **AC6951C**, which is a member of this exact AC695x/BR22 family — so
+  that is almost certainly ours too. The precise die/suffix still can't be read over BLE; a PCB
+  photo would pin the exact part, but the SDK family is no longer in doubt.
 - **Firmware version** comes from the `0x8005` "hardware info" reply. Ours was
   `08 00 05 80 0e 02 07 04` →
   - `mcu = 0x0e = 14`
@@ -63,6 +66,32 @@ image that matches it isn't served, and the images that are served are a differe
 family. Community RE reports the iPixel panels use a **JieLi AC6951C** MCU with a **ZBIT ZB25VQ32**
 SPI flash, consistent with our JieLi-path evidence, but the exact part is not broadcast over BLE or
 in any served image. Confirming *our* die still requires a PCB photo or an SPI-flash dump.
+
+### 2.2 A real JieLi `.ufw`, dissected (obtained 2026-11-08)
+
+`tools/fetch_firmware.py jieli` sweeps every JieLi board family (from `JLOTA.checkOTA`) across the
+`cid`/`pid` pairs the app references. Our own family (`R2305R021_14/_15/_11_000704`) returns no
+image, but one sibling does: **`TR2403R015_21` / cid `0001` pid `13` → `TR2603R006-01.ufw`**
+(v2117, dated 2026-03-24, 1 454 944 B, saved to `firmware/`). Same JieLi OTA path and chip family
+as our panel, so it is representative of what an ACT1033 image looks like.
+
+Structure:
+- **Container, not a flat image.** Overall entropy 7.94 (body sections are compressed/encrypted),
+  but it is a JieLi multi-partition container with plaintext headers between sections and large raw
+  `0xFF` gaps. The chip/SDK strings above sit in the clear.
+- **Partition images inside** (JieLi AC695x OTA set): `uboot.*`, `ble_app_ota.bin`, `ble_ota.bin`,
+  `edr_ota2.bin`, `nor_ota.bin`, `dev_nor_ota.bin`, `lcflash_ota.bin`, `cfg_tool.bin`, plus the
+  transport stubs `uart_update.bin` / `usb_update2.bin` / `sd_update2.bin` and the handlers
+  `user_norflash_ufw_update` / `user_lc_flash_ufw_update` / `UPDATE_JUMP`.
+- **`JLUFW` is a trailer magic**, not a header: at offset `len-16` (`4a4c554657`), zero-padded to
+  the end. Immediately before it is a 32-byte block (shape of a SHA-256 digest) preceded by another
+  ~32-byte block — consistent with a signature/hash footer that the bootloader checks.
+- Decrypting the compressed/encrypted partitions needs JieLi's per-file key/scheme from
+  `libjl_ota_auth.so` (the §3 auth blocker); it is not needed just to identify the chip/format.
+
+Net: the firmware route has now delivered everything it can without touching hardware — chip family
+(**AC695x/BR22**) and the exact `.ufw` layout are known. What remains (per-file key, exact die,
+flash readback, recovery pads) is gated on physical access, unchanged from §4.
 
 ## 3. The JieLi RCSP OTA path (what applies to us)
 

@@ -103,7 +103,51 @@ def download(fp: str) -> None:
     print("  SAVED", out, os.path.getsize(out), "bytes")
 
 
+# JieLi OTA board families (project_no prefix, representative version in-band) from JLOTA.java.
+JIELI_FAMILIES = [
+    ("R2305R021_11_", 1101), ("TR2304R009-12_", 1201), ("R2305R021_14_", 1401),
+    ("R2305R021_15_", 1501), ("TR2311R003_2_", 1701), ("TR2311R002_1_", 1801),
+    ("TR2403R015_19_", 1901), ("TR2403R015_21_", 2101), ("TR2408R015_22_", 2201),
+    ("TR2408R015_23_", 2301), ("TR2408R015_24_", 2401), ("TR2408R015_25_", 2501),
+    ("TR2408R015_26_", 2601), ("TR2408R015_27_", 2701), ("TR2509R022_26_", 2601),
+]
+# cid+pid suffixes: our panel (0007 01/04), plus the pairs the app's Constants.java references.
+JIELI_CIDPID = (
+    [f"0007{p:02d}" for p in range(1, 16)]
+    + ["000106", "000113", "000402", "001509", "002505", "002506", "002507",
+       "002508", "002512", "002513", "003901", "000801", "001801", "003501"]
+)
+
+
+def jieli_sweep() -> None:
+    """Try every JieLi board family x cid/pid for any served .ufw (our chip's format)."""
+    got = []
+    for prefix, ver in JIELI_FAMILIES:
+        hits = 0
+        for cp in JIELI_CIDPID:
+            r = aes_query(ver, prefix + cp)
+            fp = file_path_of(r)
+            if fp:
+                print(f"  HIT {prefix}{cp} v{ver} -> {fp}")
+                got.append(fp); hits += 1
+            time.sleep(0.05)
+        print(f"[{prefix:16} v{ver:<5}] {hits} hit(s) across {len(JIELI_CIDPID)} cid/pid")
+    uniq = sorted(set(got))
+    for fp in uniq:
+        print("downloading", fp)
+        try:
+            download(fp)
+        except Exception as e:  # noqa: BLE001
+            print("  download failed:", e)
+    if not uniq:
+        print("\nNo JieLi .ufw served for any family/cid/pid. The server holds no image for the "
+              "AC6951C panels; identifying our die needs a PCB photo / SPI dump.")
+
+
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "jieli":
+        jieli_sweep()
+        return
     if len(sys.argv) > 1 and sys.argv[1].isdigit():
         version = int(sys.argv[1])
         cid = sys.argv[2] if len(sys.argv) > 2 else "0007"
