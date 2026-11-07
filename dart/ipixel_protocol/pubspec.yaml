@@ -1,0 +1,14 @@
+name: ipixel_protocol
+description: Pure-Dart implementation of the iPixel Color BLE LED display protocol (LED_BLE_xxxxxxxx devices). Transport-agnostic; plug in flutter_blue_plus, BlueZ, or any BLE stack via BleLink.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.4.0
+
+dependencies:
+  image: ^4.3.0
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0

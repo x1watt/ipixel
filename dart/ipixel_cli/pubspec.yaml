@@ -1,0 +1,14 @@
+name: ipixel_cli
+description: Linux (BlueZ) command-line tool + BleLink for iPixel displays. Also the hardware test bench for ipixel_protocol.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: ^3.4.0
+dependencies:
+  ipixel_bluez:
+    path: ../ipixel_bluez
+  image: ^4.3.0
+  ipixel_protocol:
+    path: ../ipixel_protocol
+dev_dependencies:
+  lints: ^5.0.0

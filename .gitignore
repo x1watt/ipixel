@@ -1,0 +1,20 @@
+# Dart / Flutter
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+.vscode/
+# Android local config
+local.properties
+**/android/.gradle/
+**/android/captures/
+**/android/app/debug
+**/android/app/profile
+**/android/app/release
+# Python
+__pycache__/
+*.pyc
+# OS
+.DS_Store
