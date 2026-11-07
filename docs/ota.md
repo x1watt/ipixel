@@ -111,9 +111,39 @@ the **link-key challenge/response**, not firmware decryption. So:
 
 Net: the firmware route has delivered everything the server + APK can give without touching
 hardware — chip family (**AC695x/BR22**), the exact `.ufw` layout, the directory/checksum/trailer
-scheme, and the fact that the auth lib is handshake-only. The remaining software unknown is the
-chip key (likely inside the JieLi Flash Tool); the remaining hardware unknowns (exact die suffix,
-flash readback, recovery pads) are unchanged from §4.
+scheme, and the fact that the auth lib is handshake-only. The payload encryption is addressed in §2.4.
+
+### 2.4 Payload encryption — broken (root key `0x1ce6`)
+
+JieLi's payload scrambler is its **"ENC" stream cipher**: an LFSR with CRC16-CCITT taps
+(poly `0x1021`, one shift per byte) whose low byte is XORed into each data byte
+(`out = in ^ (key & 0xFF); key = (key << 1) ^ (0x1021 if key & 0x8000 else 0)`). Hardware SFCENC
+can re-key per 32-byte block from the flash address; **these iPixel images instead run one
+continuous stream per partition, seeded once with a 16-bit root key** — so the key is only 16 bits
+and brute-forceable. `tools/jl_decrypt.py` recovers it by trying all 65536 seeds and picking the
+decrypt with the most zero bytes / lowest entropy.
+
+For `ble_app_ota.bin` of `TR2603R006-01.ufw` the key is **`0x1ce6`**, confirmed: it turns a
+~120-byte region into a clean NUL-separated JieLi string table —
+`RESET`, `PSRAM`, `USBDP`, `USBDM`, `PLL_SRC`, `OSC_12M`, `UARTUPDATE`, `app_dir_head`,
+`app_dir_head2`, `UART_UPDATE_CUSTOM` — which a wrong key cannot produce. (A model-specific root
+key; the Quarkslab AC6958 teardown recovered `0x170f` for a different part.)
+
+What this does and doesn't give us:
+- **Decryption is solved.** The scheme and the app partition's key are known; `jl_decrypt.py`
+  reproduces the plaintext.
+- The app image's **uncompressed head** (loader, the `app_dir_head` segment directory, the string
+  table — roughly the first ~8 KB) is now readable.
+- The **bulk of the app is JieLi-compressed** code segments that `uboot` inflates to PSRAM at boot;
+  it stays high-entropy after decryption. Reading it fully needs the JieLi segment decompressor
+  (in the SDK) and a **pi32** disassembler (`kagaimiq/ghidra-jieli`). The other partitions
+  (`ble_ota`, `nor_ota`, `edr_ota2`, …) are fully compressed, so their own root keys can't be
+  separated by entropy without a known-plaintext anchor.
+
+So the encryption — the §3 "signed/authenticated OTA" worry at the payload level — is no longer a
+blocker. What stands between here and custom firmware is now (a) JieLi's code compression + pi32
+toolchain to read/modify the app, (b) the `.ufw` signature footer + RcspAuth to get a rebuilt image
+accepted, and (c) the physical recovery path in §4 for brick safety.
 
 ## 3. The JieLi RCSP OTA path (what applies to us)
 

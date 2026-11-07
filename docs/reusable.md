@@ -71,6 +71,7 @@ experiments before porting to Dart.
 | --- | --- | --- |
 | `fetch_firmware.py` (AES + form OTA queries, family + JieLi sweeps) | tools/fetch_firmware.py | pulling any iPixel/Heaton firmware image from the server |
 | `ufw_parse.py` (JieLi `.ufw` directory parser + extractor) | tools/ufw_parse.py | inspecting/carving any JieLi AC695x/BR22 `.ufw` |
+| `jl_decrypt.py` (`crack`/`decrypt` — JieLi ENC LFSR, 16-bit root-key brute) | tools/jl_decrypt.py | descrambling any JieLi ENC-scrambled partition/stream |
 | `entropy`, `find_directory` helpers | tools/ufw_parse.py | fingerprinting encrypted vs plaintext firmware regions |
 
 ## Candidates (not extracted yet)
