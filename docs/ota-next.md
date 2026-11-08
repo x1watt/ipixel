@@ -50,6 +50,36 @@ the scratchpad (`jlut/`), `fw-Bootloader` (br23 uboot + update_tools) is cloned 
 Everything software/remote is done: OTA write channel + E1 auth proven, no signature, dual-bank
 brick-safety confirmed. Resuming means deciding on physical access to dump the stock image.
 
+## Definitive blocker: the per-device eFuse chipkey (verified against ElectronicCats' toolkit)
+
+`ElectronicCats/jieli-ble-badge-research` is the only group to custom-flash these JieLi chips over
+BLE; their tooling is the ground truth. Reading it (`scripts/inject_chipkey.py`,
+`tools/ufw-repack/jltech/chipkeybin.py`, `tools/jl-flash-decrypt/jl_sfc_decrypt.py`) establishes:
+
+- The on-flash app area is scrambled with the chip's **eFuse "chipkey"** (per-device secret). The
+  boot ROM descrambles with it and **rejects any image not scrambled with that exact key**.
+- The **RCSP OTA path writes the code verbatim** (already chipkey-scrambled) — **no recrypt from a
+  default key** on this path (unlike the USB-loader path), so the flashed image must carry *our*
+  panel's chipkey.
+- The chipkey is **not derivable** from PID/VID (random eFuse value; ElectronicCats hardcode each
+  unit's — `0x9847`, `0xB165`), **not in the BLE `GET_TARGET_INFO`**, and we can't extract it from
+  our OTA image because the vendor **serves no image for our board**. (For the sibling we *do* have,
+  `TR2603R006`, its ENC key `0x1ce6` is effectively its chipkey — extractable only because that
+  image was served.)
+- ElectronicCats obtain the chipkey two ways, **both physical**: the USB loader
+  (`jluboottool … → "Chip key: 0xXXXX"`) or a SPI-flash dump; their pipeline *starts* from a dump,
+  which also yields the OEM uboot the repack must preserve byte-for-byte.
+
+**Conclusion:** running custom firmware on the panel requires two per-device secrets — the eFuse
+**chipkey** and the **OEM image** — obtainable only with physical access (SPI dump or USB loader).
+With physical access ruled out, there is **no remote path** to custom firmware on this device, even
+though the OTA channel and auth are fully solved. Reversing `TR2603`'s compressed code to read its
+LED driver is possible but moot: the result still couldn't be flashed without the chipkey.
+
+The only remaining way to put "XPRS on this panel" without physical access is the host-driven
+display (an XPRS-capable device drives the panel over the reverse-engineered iPixel protocol) —
+which is a different architecture than "the device itself receives".
+
 ## Pick up here (in order)
 
 1. **Non-destructive OTA negotiation probe** (safe, do first): extend `bin/ota_auth_probe.dart` to
