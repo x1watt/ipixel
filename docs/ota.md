@@ -191,6 +191,45 @@ The pragmatic alternative, which already beats the stock firmware's features, is
 does: render on the host and stream live frames (~9 fps). Custom firmware mainly buys standalone
 operation without a host.
 
+## 6. Custom-firmware route for an XPRS display (the goal)
+
+Goal: the panel itself hears XPRS messages over BLE and shows them — standalone, not driven by
+a host. Assessment after the deep dive:
+
+**Radio: feasible.** XPRS is bearer-neutral; its default BLE bearer is BLE5 *extended* advertising
+(S3/C3-class), which the AC695x cannot scan — but an XPRS node can emit messages on **legacy** BLE
+instead, and the JieLi AC695x SDK **does expose a BLE central/observer role** ("ble client",
+支持蓝牙主机). So the chip can scan/receive legacy BLE with custom firmware; the bearer is adapted on
+the XPRS side, not worked around on the panel.
+
+**Getting custom firmware on the chip — the real gate.** Not a small OTA patch (the app is
+compressed pi32, the OTA is RcspAuth-authenticated, and the image has a signature footer). The
+clean route is the **JieLi USB forced-download loader**, via `kagaimiq/jl-uboot-tool`:
+
+- The tool supports our family and ships the loader blobs: `br22loader.bin` (AC693N, "maybe
+  working") and `br23loader.bin` (**AC695N, "Working"**). Our strings say AC695x → **BR23**; a PCB
+  marking confirms it. It exposes `read`/`write`/`erase`/`dump` of SPI flash over USB (device shows
+  up as a USB mass-storage/SCSI disk, e.g. `/dev/sg2`).
+- **Writing likely needs no chip secret.** JieLi UBOOT2.00 "recrypts the firmware from the `0xFFFF`
+  key into the one burned into the efuses" — you flash with the default key and the bootloader binds
+  it. (A raw *dump*, conversely, is ENC-scrambled with the per-chip efuse key.)
+- **Brick-safe-ish:** a blank/invalid flash makes the chip **auto-enter USB download**, so a failed
+  write is recoverable without special gear.
+- **Entering download mode** needs the USB_KEY signal (16-bit `0x16EF` on D-/D+): a cheap JieLi USB
+  downloader dongle, a GPIO bit-banger, or shorting a flash pin at power-on to force the blank-flash
+  auto-download. USB D+/D- must physically reach the chip.
+
+**Confirmation plan (no shortcuts).** The definitive test of "can we rewrite it" is a **flash dump**:
+it proves read access, reveals the exact chip + flash size, and yields *our* panel's stock image
+(its LED wiring and its own ENC key — things the OTA server won't give us). A read-modify-write of
+one unused sector then proves write. Only after that is building a custom image (JieLi AC695x SDK +
+the LED driver learned from the dump) worth starting. Toolchain is staged in the session scratchpad
+(`jlut/`, venv ready); the blockers are now purely physical (USB data access + download-mode entry).
+
+**Still-open risks:** flash read may be lock-protected on some parts (needs an unlock key); the boot
+ROM's signature check on a custom image is unverified; and building firmware needs the AC695x SDK
+plus the board's LED-driver config. None is known-fatal; all are gated on having the device on USB.
+
 ## 5. References
 
 - Quarkslab, "A modern tale of blinkenlights" — JieLi OTA auth reversed; OTA can't dump firmware.
