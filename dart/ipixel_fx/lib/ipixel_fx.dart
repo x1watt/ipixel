@@ -18,3 +18,5 @@ export 'src/scenes/clocks.dart';
 export 'src/scenes/widgets.dart';
 export 'src/scenes/games.dart';
 export 'src/scenes/signs.dart';
+export 'src/xprs.dart';
+export 'src/scenes/xprs.dart';
