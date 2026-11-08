@@ -253,6 +253,15 @@ The native OTA path works for us, no USB needed. Verified live on the panel:
   `02 70 61 73 73`, and then answered `GET_TARGET_INFO` with a 62-byte info packet. **We can
   authenticate to and drive the panel's OTA command channel.**
 
+**Negotiation probe (2026, `ipixel_bluez:ota_negotiate`, non-destructive):** after auth,
+`GET_TARGET_INFO` decodes to **`doubleBackup=true`** (dual-bank OTA — a rejected/bad image falls
+back to the current bank, so trying one is low brick-risk), `mandatoryUpgrade=0`, BLE addr
+`c3:ef:3e:4f:7e:b7`. `GET_UPDATE_FILE_OFFSET (0xE1)` returns `offset=0,len=0` and `INQUIRE (0xE2)`
+gets no reply **before update mode** — so the image-acceptance/flag check only runs once
+`ENTER_UPDATE_MODE (0xE3)` has been sent. 0xE3 is the first state-changing step (recoverable:
+no flash write happens until blocks are sent + committed; worst case a power-cycle), so it is gated
+on explicit user consent.
+
 So "can we rewrite the firmware?" — **the write channel is open and authenticated, confirmed on
 our panel.** OTA commands available next: `OTA_INQUIRE_DEVICE_IF_CAN_UPDATE (0xE2)`,
 `GET_DEVICE_UPDATE_FILE_INFO_OFFSET (0xE1)`, `OTA_ENTER_UPDATE_MODE (0xE3)`,
