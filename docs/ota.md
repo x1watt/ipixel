@@ -230,6 +230,38 @@ the LED driver learned from the dump) worth starting. Toolchain is staged in the
 ROM's signature check on a custom image is unverified; and building firmware needs the AC695x SDK
 plus the board's LED-driver config. None is known-fatal; all are gated on having the device on USB.
 
+## 7. OTA over BLE — authenticated channel CONFIRMED (2026-11-08)
+
+The native OTA path works for us, no USB needed. Verified live on the panel:
+
+- **The OTA service is always present.** A GATT scan of the running panel shows three services:
+  `0x1800`, the app's `0x00FA` (FA02/FA03), **and `0x00AE` (AE01 write, AE02 notify)** — JieLi's
+  RCSP OTA service, live without any "enter OTA" trigger. (`ipixel_bluez:gatt_discover`.)
+- **RCSP framing:** `FE DC BA | flags | opcode | len(2, big-endian) | [sn|status + params] | EF`.
+  A host command sets `flags = 0x80 (command) | 0x40 (wants response) = 0xC0`. `GET_TARGET_INFO`
+  is opcode `0x03`. (From the decompiled `com.jieli.jl_bt_ota` `ParseHelper.packSendBasePacket`.)
+- **Device auth is Bluetooth legacy E1 (SAFER+) with a fixed key.** The panel ignores all commands
+  until a challenge/response handshake on AE01/AE02 completes. The key
+  `06 77 5F 87 91 8D D4 23 00 5D F1 D8 CF 0C 14 2B` and address `11 22 33 33 22 11` are compiled
+  into `libjl_ota_auth.so` (.rodata @0x3150/0x3160) — the same constants Quarkslab recovered, i.e.
+  **not per-device**. Implemented in `dart/ipixel_bluez/lib/jl_auth.dart` (ported from the
+  francozappa/bias SAFER+ code, validated against its vectors and our recovered vector), with a
+  `selftest`. Handshake (17-byte frames): `host 00<rand>` → `dev 01<E1(rand)>` → `host 02"pass"`
+  → `dev 00<chal>` → `host 01<E1(chal)>` → `dev 02"pass"`.
+- **Verified end to end** (`ipixel_bluez:ota_auth_probe`): the device's response matched our E1
+  output (so our key/impl are correct), it accepted our answer to its challenge, returned
+  `02 70 61 73 73`, and then answered `GET_TARGET_INFO` with a 62-byte info packet. **We can
+  authenticate to and drive the panel's OTA command channel.**
+
+So "can we rewrite the firmware?" — **the write channel is open and authenticated, confirmed on
+our panel.** OTA commands available next: `OTA_INQUIRE_DEVICE_IF_CAN_UPDATE (0xE2)`,
+`GET_DEVICE_UPDATE_FILE_INFO_OFFSET (0xE1)`, `OTA_ENTER_UPDATE_MODE (0xE3)`,
+`OTA_SEND_FIRMWARE_UPDATE_BLOCK (0xE5)`, `REBOOT (0xE7)`. What remains is **producing a `.ufw` the
+bootloader accepts** — matching the container/ENC/signature for *this* board. The device validates
+the image before committing (JieLi OTA verifies then switches), and a bad image makes it fall back,
+but the image-build (needs the AC695x SDK + this panel's LED-driver config, and the signature-footer
+question from §2.2) is the remaining work — no longer the device access or the auth.
+
 ## 5. References
 
 - Quarkslab, "A modern tale of blinkenlights" — JieLi OTA auth reversed; OTA can't dump firmware.
