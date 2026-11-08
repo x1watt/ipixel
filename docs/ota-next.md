@@ -27,13 +27,28 @@ not a blocker. The remaining job is getting our own code onto the chip.
 So "can we rewrite the firmware?" — **the write channel is confirmed open.** The open work is
 producing a `.ufw` the bootloader will *accept*, and flashing it.
 
-## The two remaining blockers (tomorrow's real work)
+## Updated blockers (signature resolved; the real gate is the OEM image)
 
-1. **Build an acceptable image** — needs the JieLi **AC695x SDK** (JieLi-Tech / YunThinker
-   "soundbox" SDK) *and* this board's **LED-driver config** (how the 64×16 is wired). The LED config
-   lives in our stock firmware (OTA can't read it back) or on the PCB.
-2. **Signature footer** — is it a plain hash (forgeable, we're fine) or a real signature against a
-   vendor key (then a custom image is rejected)? **Unknown; this is the one possibly-fatal gate.**
+Resolved by research + the open BR23 bootloader (`Jieli-Tech/fw-Bootloader`, AC695x→`br23`):
+- **No cryptographic signature.** The br23 uboot has no `rsa/ecc/ed25519/sha256/signature` check;
+  JieLi OTA verifies with CRC16 + an SDK-ID identity match + a per-PID "chipkey" (a packing/scramble
+  key, not a signature). The `.ufw`'s 32-byte footer isn't a SHA-256 of any simple prefix either —
+  consistent with a CRC/MAC over the *unscrambled* content, not a blocker.
+- **Prior art:** `ElectronicCats/jieli-ble-badge-research` got a self-built image accepted over BLE
+  OTA on a sibling JieLi part (AC707N/BR35). It required: **repack into the OEM `.ufw`**, preserve
+  the OEM uboot byte-for-byte, recompute all CRCs, and embed the per-PID chipkey. A raw SDK `make`
+  image **bricks silently** — do not flash one.
+
+**The one hard blocker left: our panel's OEM firmware image.** We need it for the OEM uboot, the
+per-PID chipkey, and the LED-driver config. We can't get it remotely — the vendor server has no
+image for our board, OTA can't read flash back, and the USB port didn't enumerate. So this route is
+now gated on a **physical SPI-flash dump**: open the case, then either `jl-uboot-tool` over the
+chip's USB pads (USB_KEY entry) or a SPI clip on the ZB25VQ32 flash. `jl-uboot-tool` is staged in
+the scratchpad (`jlut/`), `fw-Bootloader` (br23 uboot + update_tools) is cloned (`fwboot/`), and
+`fw-AC63_BT_SDK` ("compatible with AC69 series without audio") is the app-build base to fetch.
+
+Everything software/remote is done: OTA write channel + E1 auth proven, no signature, dual-bank
+brick-safety confirmed. Resuming means deciding on physical access to dump the stock image.
 
 ## Pick up here (in order)
 
